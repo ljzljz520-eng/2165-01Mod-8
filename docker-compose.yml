@@ -1,0 +1,8 @@
+services:
+  game:
+    build: .
+    container_name: arknights_td_game
+    environment:
+      - TD_MODE=demo
+    stdin_open: true
+    tty: true

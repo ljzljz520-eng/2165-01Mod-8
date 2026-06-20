@@ -1,0 +1,96 @@
+#!/usr/bin/expect -f
+set timeout 8
+encoding system utf-8
+
+proc fail {msg} {
+  puts stderr "INTERACTIVE REGRESSION FAILED: $msg"
+  exit 1
+}
+
+set script_dir [file dirname [file normalize [info script]]]
+set repo_dir [file dirname $script_dir]
+cd $repo_dir
+
+if {[catch {exec make >/dev/null} err]} {
+  fail "build failed: $err"
+}
+
+set env(TD_NO_CLEAR) 1
+set env(TD_TICK_MS) 0
+set env(TD_WAVE_CLEAR_MS) 0
+
+spawn ./arknights_td
+
+expect {
+  -re {第1波 > $} {}
+  timeout { fail "did not reach prep prompt" }
+}
+
+# 场景 A: 英文输入左移 + Delete 修正 plcae -> place
+send -- "plcae 3 2"
+send -- "\033\[D\033\[D\033\[D\033\[D\033\[D\033\[D\033\[D"
+send -- "a"
+send -- "\033\[C"
+send -- "\033\[3~"
+send -- "\r"
+expect {
+  -re {部署成功：\(3,2\)} {}
+  timeout { fail "english edit scenario did not deploy (3,2)" }
+}
+expect {
+  -re {第1波 > $} {}
+  timeout { fail "missing prompt after english scenario" }
+}
+
+# 场景 B: 中文输入 Home/Right/Delete 修正 部暑 -> 部署
+send -- "部暑 5 4"
+send -- "\033\[H"
+send -- "\033\[C"
+send -- "\033\[3~"
+send -- "署"
+send -- "\r"
+expect {
+  -re {部署成功：\(5,4\)} {}
+  timeout { fail "chinese utf-8 edit scenario did not deploy (5,4)" }
+}
+expect {
+  -re {第1波 > $} {}
+  timeout { fail "missing prompt after chinese scenario" }
+}
+
+# 场景 C: Home/End/Delete/Backspace 组合，不污染命令
+send -- "mappx"
+send -- "\033\[D"
+send -- "\177"
+send -- "\033\[3~"
+send -- "\033\[H\033\[F"
+send -- "\r"
+expect {
+  -re {图例: # 路径, T 干员, A 高级干员, E 敌人} {}
+  timeout { fail "editing keys scenario did not execute map" }
+}
+expect {
+  -re {第1波 > $} {}
+  timeout { fail "missing prompt after map scenario" }
+}
+
+send -- "quit\r"
+expect {
+  -re {游戏结束（主动退出）。} {}
+  timeout { fail "missing quit message" }
+}
+expect eof
+
+# 场景 D: 非 TTY 管道输入兼容
+set pipe_out ""
+if {[catch {set pipe_out [exec sh -c "printf 'help\\nquit\\n' | TD_NO_CLEAR=1 TD_TICK_MS=0 TD_WAVE_CLEAR_MS=0 ./arknights_td"]} err]} {
+  fail "pipe compatibility command failed: $err"
+}
+if {[string first "place x y /" $pipe_out] < 0} {
+  fail "pipe run missing help output"
+}
+if {[string first "quit /" $pipe_out] < 0} {
+  fail "pipe run missing expected command list"
+}
+
+puts "INTERACTIVE REGRESSION PASSED"
