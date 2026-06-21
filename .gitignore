@@ -21,5 +21,9 @@ __pycache__/
 .ruff_cache/
 .DS_Store
 *.log
+.o
+*.out
+*.dSYM/
+arknights_td
 .env
 .env.*
